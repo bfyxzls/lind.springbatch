@@ -1,0 +1,9 @@
+spring:
+    datasource:
+       url: jdbc:mysql://localhost:3306/bookshop?useSSL=false&characterEncoding=utf8
+       username: root
+       password: Abc123##
+       driver-class-name: com.mysql.jdbc.Driver
+
+spring.batch.job.enabled: false
+logging.level.org.springframework.web: DEBUG
