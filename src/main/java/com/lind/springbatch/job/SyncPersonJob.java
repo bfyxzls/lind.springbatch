@@ -6,12 +6,7 @@ import com.lind.springbatch.listener.PersonJobListener;
 import com.lind.springbatch.processor.PersonItemProcessor;
 import javax.sql.DataSource;
 import org.springframework.batch.core.Job;
-import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
-import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
-import org.springframework.batch.core.configuration.annotation.JobScope;
-import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
-import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
@@ -28,29 +23,26 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 @EnableBatchProcessing
-public class PersonJob {
+public class SyncPersonJob extends JobBase {
   @Autowired
   private DataSource dataSource;
-  @Autowired
-  private JobBuilderFactory job;
-  @Autowired
-  private StepBuilderFactory step;
   @Autowired
   @Qualifier("primaryJdbcTemplate")
   private JdbcTemplate jdbcTemplate;
 
   /**
-   * .
+   * 初始化.
    */
-  @Bean
-  public Job syncCustomerBaseInfoJob() throws Exception {
-    return job.get("syncCustomerBaseInfo").incrementer(new RunIdIncrementer())
-        .start(syncCustomerBaseInfo())
-        .listener(new PersonJobListener())
-        .build();
+  public SyncPersonJob() {
+    super("personJob", new PersonJobListener());
   }
 
   @Bean
+  public Job personJob() throws Exception {
+    return super.jobInitialization();
+  }
+
+  @Override
   public ItemReader<Person> reader() throws Exception {
     StringBuffer sb = new StringBuffer();
     sb.append("select * from person");
@@ -64,60 +56,34 @@ public class PersonJob {
     return jdbcCursorItemReader;
   }
 
-  @Bean
+  @Override
   public ItemProcessor<Person, Person> processor() {
     PersonItemProcessor processor = new PersonItemProcessor();
     processor.setValidator(csvBeanValidator());
     return processor;
   }
 
-
+  @Override
   @Bean
   public ItemWriter<Person> writer() {
     JdbcBatchItemWriter<Person> writer = new JdbcBatchItemWriter<Person>();
     writer.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<Person>());
     String sql = "insert into person_export " + "(id,name,age,nation,address) "
         + "values(:id, :name, :age, :nation,:address)";
-    writer.setSql(sql); //3
+    writer.setSql(sql);
     writer.setDataSource(dataSource);
     return writer;
   }
 
 
   /**
-   * .
+   * BeanValidator里要使用它.
    *
    * @return
    */
-  @Bean
-  public ItemProcessor<Person, Person> baseInfoProcessor() {
-    PersonItemProcessor processor = new PersonItemProcessor();
-    processor.setValidator(csvBeanValidator());
-    return processor;
-  }
-
-
-  /**
-   * .
-   */
-  @Bean
-  @JobScope
-  public Step syncCustomerBaseInfo() throws Exception {
-    return step.get("syncCustomerBaseInfo")
-        .<Person, Person>chunk(5000)
-        .reader(reader())
-        .processor(baseInfoProcessor())
-        .writer(writer())
-        .build();
-  }
-
-  @Bean
-  public PersonJobListener csvJobListener() {
-    return new PersonJobListener();
-  }
-
+  @Override
   @Bean
   public Validator<Person> csvBeanValidator() {
-    return new BeanValidator<Person>();
+    return new BeanValidator<>();
   }
 }
