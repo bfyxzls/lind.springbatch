@@ -48,7 +48,7 @@ public class SyncPersonVerson2Job extends JobBase {
   @Override
   public ItemReader<Person> reader() throws Exception {
     StringBuffer sb = new StringBuffer();
-    sb.append("select * from person");
+    sb.append("select * from person limit 1");
     String sql = sb.toString();
     JdbcCursorItemReader<Person> jdbcCursorItemReader =
         new JdbcCursorItemReader<>();
@@ -77,7 +77,7 @@ public class SyncPersonVerson2Job extends JobBase {
    * @return
    */
   @Override
-  @Bean
+  @Bean("personVerson2JobWriter")
   public ItemWriter<Person> writer() {
     JdbcBatchItemWriter<Person> writer = new JdbcBatchItemWriter<Person>();
     writer.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<Person>());

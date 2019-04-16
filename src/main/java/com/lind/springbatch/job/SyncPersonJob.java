@@ -31,12 +31,18 @@ public class SyncPersonJob extends JobBase {
   private JdbcTemplate jdbcTemplate;
 
   /**
-   * 初始化.
+   * 初始化，规则了job名称和监视器.
    */
   public SyncPersonJob() {
     super("personJob", new PersonJobListener());
   }
 
+  /**
+   * 必须要定义一个bean，方法名称就是bean名称，在controller里注入时使用.
+   *
+   * @return
+   * @throws Exception
+   */
   @Bean
   public Job personJob() throws Exception {
     return super.jobInitialization();
@@ -64,7 +70,7 @@ public class SyncPersonJob extends JobBase {
   }
 
   @Override
-  @Bean
+  @Bean("personJobWriter")
   public ItemWriter<Person> writer() {
     JdbcBatchItemWriter<Person> writer = new JdbcBatchItemWriter<Person>();
     writer.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<Person>());
