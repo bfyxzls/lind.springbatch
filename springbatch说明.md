@@ -156,3 +156,31 @@
     return new BeanValidator<>();
   }
 ```
+### 添加一个api，手动触发
+```
+ @Autowired
+  Job personJob;
+  @Autowired
+  Job personVerson2Job;
+  @Autowired
+  JobLauncher jobLauncher;
+
+  void exec(Job job) throws Exception {
+    JobParameters jobParameters = new JobParametersBuilder()
+        .addLong("time", System.currentTimeMillis())
+        .toJobParameters();
+    jobLauncher.run(job, jobParameters);
+  }
+
+  @RequestMapping("/run1")
+  public String run1() throws Exception {
+    exec(personJob);
+    return "personJob success";
+  }
+
+  @RequestMapping("/run2")
+  public String run2() throws Exception {
+    exec(personVerson2Job);
+    return "personVerson2Job success";
+  }
+```
