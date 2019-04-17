@@ -12,116 +12,167 @@
 ### JobBase定义了几个公用的方法
 ```
  /**
-   * job初始化与启动.
-   */
-  public Job jobInitialization() throws Exception {
-    return job.get(jobName).incrementer(new RunIdIncrementer())
-        .start(syncStep())
-        .listener(jobExecutionListener)
-        .build();
-  }
+  * springBatch的job基础类.
+  */
+ public abstract class JobBase<T> {
+ 
+   /**
+    * 批次.
+    */
+   protected int chunkCount = 5000;
+   /**
+    * 监听器.
+    */
+   private JobExecutionListener jobExecutionListener;
+   /**
+    * 处理器.
+    */
+   private ValidatingItemProcessor<T> validatingItemProcessor;
+   /**
+    * job名称.
+    */
+   private String jobName;
+   /**
+    * 检验器.
+    */
+   private Validator<T> validator;
+   @Autowired
+   private JobBuilderFactory job;
+   @Autowired
+   private StepBuilderFactory step;
+ 
+ 
+   /**
+    * 初始化.
+    *
+    * @param jobName                 job名称
+    * @param jobExecutionListener    监听器
+    * @param validatingItemProcessor 处理器
+    * @param validator               检验
+    */
+   public JobBase(String jobName,
+                  JobExecutionListener jobExecutionListener,
+                  ValidatingItemProcessor<T> validatingItemProcessor,
+                  Validator<T> validator) {
+     this.jobName = jobName;
+     this.jobExecutionListener = jobExecutionListener;
+     this.validatingItemProcessor = validatingItemProcessor;
+     this.validator = validator;
+   }
+ 
+   /**
+    * job初始化与启动.
+    */
+   public Job getJob() throws Exception {
+     return job.get(jobName).incrementer(new RunIdIncrementer())
+         .start(syncStep())
+         .listener(jobExecutionListener)
+         .build();
+   }
+ 
+   /**
+    * 执行步骤.
+    *
+    * @return
+    */
+   public Step syncStep() throws Exception {
+     return step.get("step1")
+         .<T, T>chunk(chunkCount)
+         .reader(reader())
+         .processor(processor())
+         .writer(writer())
+         .build();
+   }
+ 
+   /**
+    * 单条处理数据.
+    *
+    * @return
+    */
+   public ItemProcessor<T, T> processor() {
+     validatingItemProcessor.setValidator(processorValidator());
+     return validatingItemProcessor;
+   }
+ 
+   /**
+    * 校验数据.
+    *
+    * @return
+    */
+   @Bean
+   public Validator<T> processorValidator() {
+     return validator;
+   }
+ 
+   /**
+    * 批量读数据.
+    *
+    * @return
+    * @throws Exception
+    */
+   public abstract ItemReader<T> reader() throws Exception;
+ 
+   /**
+    * 批量写数据.
+    *
+    * @return
+    */
+   @Bean
+   public abstract ItemWriter<T> writer();
+ 
+ }
 
-  /**
-   * 执行步骤.
-   *
-   * @return
-   */
-  public Step syncStep() throws Exception {
-    return step.get("step1")
-        .<Person, Person>chunk(chunkCount)
-        .reader(reader())
-        .processor(processor())
-        .writer(writer())
-        .build();
-  }
-
-  /**
-   * 批量读数据.
-   *
-   * @return
-   * @throws Exception
-   */
-  public abstract ItemReader<Person> reader() throws Exception;
-
-  /**
-   * 单条处理数据.
-   *
-   * @return
-   */
-  public abstract ItemProcessor<Person, Person> processor();
-
-  /**
-   * 批量写数据.
-   *
-   * @return
-   */
-  @Bean
-  public abstract ItemWriter<Person> writer();
-
-  /**
-   * 校验数据.
-   *
-   * @return
-   */
-  @Bean
-  public abstract Validator<Person> csvBeanValidator();
 ```
-主要规定了公用方法的执行策略，而具体的job名称，读，写，检验，处理器，监视器还是需要具体JOB去实现的。
+主要规定了公用方法的执行策略，而具体的job名称，读，写还是需要具体JOB去实现的。
 
 ### 具体Job实现
 ```
- /**
-   * 初始化，规则了job名称和监视器.
-   */
-  public SyncPersonJob() {
-    super("personJob", new PersonJobListener());
-  }
-
-  /**
-   * 必须要定义一个bean，方法名称就是bean名称，在controller里注入时使用.
-   *
-   * @return
-   * @throws Exception
-   */
-  @Bean
-  public Job personJob() throws Exception {
-    return super.jobInitialization();
-  }
+ @Configuration
+ @EnableBatchProcessing
+ public class SyncPersonJob extends JobBase<Person> {
+   @Autowired
+   private DataSource dataSource;
+   @Autowired
+   @Qualifier("primaryJdbcTemplate")
+   private JdbcTemplate jdbcTemplate;
+ 
+   /**
+    * 初始化，规则了job名称和监视器.
+    */
+   public SyncPersonJob() {
+     super("personJob", new PersonJobListener(), new PersonItemProcessor(), new BeanValidator<>());
+   }
+ 
+   @Override
+   public ItemReader<Person> reader() throws Exception {
+     StringBuffer sb = new StringBuffer();
+     sb.append("select * from person");
+     String sql = sb.toString();
+     JdbcCursorItemReader<Person> jdbcCursorItemReader =
+         new JdbcCursorItemReader<>();
+     jdbcCursorItemReader.setSql(sql);
+     jdbcCursorItemReader.setRowMapper(new BeanPropertyRowMapper<>(Person.class));
+     jdbcCursorItemReader.setDataSource(dataSource);
+ 
+     return jdbcCursorItemReader;
+   }
+ 
+ 
+   @Override
+   @Bean("personJobWriter")
+   public ItemWriter<Person> writer() {
+     JdbcBatchItemWriter<Person> writer = new JdbcBatchItemWriter<Person>();
+     writer.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<Person>());
+     String sql = "insert into person_export " + "(id,name,age,nation,address) "
+         + "values(:id, :name, :age, :nation,:address)";
+     writer.setSql(sql);
+     writer.setDataSource(dataSource);
+     return writer;
+   }
+ 
+ }
 ```
-### 读和处理器根据自已业务实现即可
-```$xslt
-/**
-   * 批量读数据.
-   *
-   * @return
-   * @throws Exception
-   */
-  @Override
-  public ItemReader<Person> reader() throws Exception {
-    StringBuffer sb = new StringBuffer();
-    sb.append("select * from person");
-    String sql = sb.toString();
-    JdbcCursorItemReader<Person> jdbcCursorItemReader =
-        new JdbcCursorItemReader<>();
-    jdbcCursorItemReader.setSql(sql);
-    jdbcCursorItemReader.setRowMapper(new BeanPropertyRowMapper<>(Person.class));
-    jdbcCursorItemReader.setDataSource(dataSource);
 
-    return jdbcCursorItemReader;
-  }
-
-  /**
-   * 单条处理数据.
-   *
-   * @return
-   */
-  @Override
-  public ItemProcessor<Person, Person> processor() {
-    PersonItemProcessor processor = new PersonItemProcessor();
-    processor.setValidator(csvBeanValidator());
-    return processor;
-  }
-```
 ###  写操作需要定义自己的bean的声明
 > 注意，需要为每个job的write启个名称，否则在多job时，write将会被打乱
 ```$xslt
@@ -133,35 +184,16 @@
   @Override
   @Bean("personVerson2JobWriter")
   public ItemWriter<Person> writer() {
-    JdbcBatchItemWriter<Person> writer = new JdbcBatchItemWriter<Person>();
-    writer.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<Person>());
-    String sql = "insert into person_export2 " + "(id,name,age,nation,address) "
-        + "values(:id, :name, :age, :nation,:address)";
-    writer.setSql(sql);
-    writer.setDataSource(dataSource);
-    return writer;
+   
   }
 
 ```
-### 检验器也是一个bean
-```$xslt
-  /**
-   * 校验数据.
-   *
-   * @return
-   */
-  @Override
-  @Bean
-  public Validator<Person> csvBeanValidator() {
-    return new BeanValidator<>();
-  }
-```
+
 ### 添加一个api，手动触发
 ```
  @Autowired
-  Job personJob;
-  @Autowired
-  Job personVerson2Job;
+  SyncPersonJob syncPersonJob;
+
   @Autowired
   JobLauncher jobLauncher;
 
@@ -174,13 +206,7 @@
 
   @RequestMapping("/run1")
   public String run1() throws Exception {
-    exec(personJob);
+    exec(syncPersonJob.getJob());
     return "personJob success";
-  }
-
-  @RequestMapping("/run2")
-  public String run2() throws Exception {
-    exec(personVerson2Job);
-    return "personVerson2Job success";
   }
 ```

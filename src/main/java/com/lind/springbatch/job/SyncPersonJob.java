@@ -5,15 +5,12 @@ import com.lind.springbatch.entity.Person;
 import com.lind.springbatch.listener.PersonJobListener;
 import com.lind.springbatch.processor.PersonItemProcessor;
 import javax.sql.DataSource;
-import org.springframework.batch.core.Job;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
-import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.JdbcCursorItemReader;
-import org.springframework.batch.item.validator.Validator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -23,7 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 @EnableBatchProcessing
-public class SyncPersonJob extends JobBase {
+public class SyncPersonJob extends JobBase<Person> {
   @Autowired
   private DataSource dataSource;
   @Autowired
@@ -34,18 +31,7 @@ public class SyncPersonJob extends JobBase {
    * 初始化，规则了job名称和监视器.
    */
   public SyncPersonJob() {
-    super("personJob", new PersonJobListener());
-  }
-
-  /**
-   * 必须要定义一个bean，方法名称就是bean名称，在controller里注入时使用.
-   *
-   * @return
-   * @throws Exception
-   */
-  @Bean
-  public Job personJob() throws Exception {
-    return super.jobInitialization();
+    super("personJob", new PersonJobListener(), new PersonItemProcessor(), new BeanValidator<>());
   }
 
   @Override
@@ -62,12 +48,6 @@ public class SyncPersonJob extends JobBase {
     return jdbcCursorItemReader;
   }
 
-  @Override
-  public ItemProcessor<Person, Person> processor() {
-    PersonItemProcessor processor = new PersonItemProcessor();
-    processor.setValidator(csvBeanValidator());
-    return processor;
-  }
 
   @Override
   @Bean("personJobWriter")
@@ -81,15 +61,4 @@ public class SyncPersonJob extends JobBase {
     return writer;
   }
 
-
-  /**
-   * BeanValidator里要使用它.
-   *
-   * @return
-   */
-  @Override
-  @Bean
-  public Validator<Person> csvBeanValidator() {
-    return new BeanValidator<>();
-  }
 }
